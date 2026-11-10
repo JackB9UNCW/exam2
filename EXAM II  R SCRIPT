@@ -106,8 +106,8 @@ sst_from_x   <- function(x) sum((x - mean(x))^2)            # SST from the x val
 sst_from_sd  <- function(n, s) (n - 1) * s^2                # SST from a standard deviation
 sst_from_var <- function(n, v) (n - 1) * v                  # SST from a variance
 sd_b1      <- function(sigma, SST_X) sigma / sqrt(SST_X)    # Theorem 2.2 (simple regression)
-sigma2_hat <- function(SSR, n, K = 1) SSR / (n - K - 1)     # K = number of x's (simple: 1)
-sigma_hat  <- function(SSR, n, K = 1) sqrt(SSR / (n - K - 1))
+sigma2_hat <- function(SSR, n, K) SSR / (n - K - 1)         # K = number of x's (simple: K = 1). MUST give K.
+sigma_hat  <- function(SSR, n, K) sqrt(SSR / (n - K - 1))   # "standard error of the regression" = sqrt
 se_simple  <- function(SSR, n, SST_X) sqrt(SSR / (n - 2)) / sqrt(SST_X)
 se_multi   <- function(sigmahat, SSTj, R2j) sigmahat / sqrt(SSTj * (1 - R2j))
 se_scale   <- function(se, k) se / sqrt(k)                  # sample k times as large
@@ -248,8 +248,10 @@ sst_from_var(26, 4)                                     # Day 16: n 26, S_X^2 = 
 
 ## [B2] sigma-hat^2 = SSR / (n - K - 1)   ;  sigma-hat = sqrt of that  ("standard error of the regression")
 ##   K = number of independent variables (NOT counting the intercept). Simple regression: K = 1.
-sigma2_hat(639, 60)                                     # Quiz 8: simple, n 60        -> 11.02
-sigma_hat(639, 60)                                      #                             -> 3.32
+sigma2_hat(639, 60, K = 1)                              # Quiz 8: simple, n 60        -> 11.02
+sigma_hat(639, 60, K = 1)                               #                             -> 3.32
+sigma_hat(1680, 45, K = 2)                              # 2 x's: df = 42             -> 6.32
+##   "error VARIANCE" -> sigma2_hat()   |   "standard error OF THE REGRESSION" -> sigma_hat() (the sqrt)
 ## In summary(reg): "Residual standard error: ___ on ___ degrees of freedom" = sigma-hat and n-K-1
 reg <- lm(wage ~ educ, data = wage1)
 summary(reg)$sigma                                      # PS9 #18                     -> 3.38
