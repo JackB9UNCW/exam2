@@ -1,0 +1,420 @@
+## =====================================================================================
+##  ECN 377  |  EXAM II  R SCRIPT  (Wed 11/11)
+##  Jack Busbice  |  built from Problem Sets 8-12, Quizzes 7-10, Dr. Loh's past Exam II
+## =====================================================================================
+##
+##  HOW TO USE THIS IN THE EXAM
+##   1. Run PART 0 once (select it, Ctrl/Cmd + Enter). It loads the data and every helper.
+##   2. Read the question. Find its TRIGGER WORDS in the INDEX below.
+##   3. Jump to that section (Ctrl/Cmd + F the section number, e.g. "## [B3]").
+##   4. Each section has: the rule in words, a helper you call, and a worked example
+##      that reproduces a REAL quiz/problem-set answer. Swap in your numbers.
+##   5. Round only the final answer:  round(x, 2).  Never type rounded numbers into R.
+##   6. NEVER leave a numeric blank. A guess costs nothing.
+##
+##  Every example's answer is in its comment ("-> 10.20"). If yours differs, you typed
+##  something wrong, not the formula.
+##
+## -------------------------------------------------------------------------------------
+##  INDEX: QUESTION WORDING  ->  SECTION
+## -------------------------------------------------------------------------------------
+##  LOGS AND UNITS (Day 13, Wooldridge 2.4)
+##   "log(y) ... by what PERCENT does y change"            -> [A1]  pct_loglevel()
+##   "log(y) ... several x's change"                       -> [A1]  pct_loglevel(c(..), c(..))
+##   "log(y) on log(x) ... x rises/falls by __%"           -> [A2]  pct_loglog()
+##   "y on log(x) ... how many UNITS"                      -> [A3]  units_levellog()
+##   "predicted y IN DOLLARS / levels" from a log(y) model  -> [A4]  predict_y()  (uses exp)
+##   "y multiplied/divided by", "x multiplied/divided by"  -> [A5]  rescale()
+##   "measured in months ... per year"                     -> [A5]
+##   "log(y) ... y re-measured ... new INTERCEPT"           -> [A5]  + log(c)
+##
+##  VARIANCE AND STANDARD ERRORS (Days 15-16, 20-21; Problem Set 12)
+##   "sd(b1-hat)" with sigma and x values                  -> [B1]  sd_b1()
+##   "S_X" / "sample variance of x" -> SST_X                -> [B1]  sst_from_sd(), sst_from_var()
+##   "estimate of the error variance" sigma-hat^2           -> [B2]  sigma2_hat()
+##   "standard error of the regression" sigma-hat           -> [B2]  sigma_hat()
+##   "se(b1-hat)" simple regression from SSR, n, SST_X      -> [B3]  se_simple()
+##   "se(bj-hat)" multiple regression from pieces           -> [B3]  se_multi()
+##   "which regression gives R_j^2"                         -> [B3]  (xj on the OTHER x's)
+##   "sample k times as large"                              -> [B4]  se / sqrt(k)
+##   "degrees of freedom"                                   -> [B2]  n - K - 1
+##   "standard error BY HAND" from real data                -> [B5]  se_by_hand()  (NA-safe!)
+##   "what makes Var(bj) bigger/smaller"                    -> [B6]  (rules in words)
+##
+##  MULTIPLE REGRESSION (Days 17-18)
+##   "predicted value at x1 = ..., x2 = ..."                -> [C1]  predict_lin()
+##   "by how much does y-hat CHANGE", "holding fixed"        -> [C2]  change_lin()
+##   "sample mean of y" from coefficients and x-means       -> [C3]  (line passes through means)
+##   "missing residual", "sum of x times residuals"         -> [C3]
+##   "which statements are ALWAYS true after OLS"           -> [C3]
+##
+##  OMITTED-VARIABLE BIAS (Days 19-20, formula 3.23, Table 3.2)
+##   "find the MULTIPLE slope b1-hat" from tilde, b2, delta -> [D1]  b1_multiple()
+##   "find the SIMPLE slope b1-tilde"                       -> [D1]  b1_simple()
+##   "bias", "compute b2-hat * delta1-tilde" with data      -> [D2]  ovb_data()
+##   "biased up or down" (a story)                          -> [D3]  ovb_sign()
+##   "when is there NO bias"                                -> [D3]
+##
+##  ASSUMPTIONS (Days 15, 18, 21)
+##   "which assumption fails", MLR3, MLR4, MLR5, BLUE       -> [E]   (rules in words)
+##
+##  FROM BEFORE EXAM I (a few questions)
+##   E[X], E[X^2] -> sd(aX + b)                             -> [F1]  sd_linear()
+##   Var(aX + cY) with a covariance                         -> [F1]  var_combo()
+##   joint probability table -> E, Var, Cov, Cor            -> [F2]  joint_table()
+##   small sample -> OLS slope, residual i                  -> [F3]  ols_hand()
+##   SST from n and sample variance; SSR from SSE and R^2   -> [F4]
+##   "mean of y among those with ..." (a group)             -> [F5]  mean(y[condition])
+##   "which of four lines is OLS"                           -> [F6]
+## =====================================================================================
+
+
+## =====================================================================================
+##  PART 0: SETUP (run this whole block first)
+## =====================================================================================
+# install.packages("wooldridge")      # only if library() below gives an error
+library(wooldridge)
+options(digits = 10)                  # print full precision; round only at the end
+
+## r2(): round to the hundredths, the way the exam wants it
+r2 <- function(x) round(x, 2)
+
+## ---- LOGS (Table 2.3) ----
+## log-level: %change in y = 100 * sum(b * dx). Works for one x or several.
+pct_loglevel <- function(b, dx) 100 * sum(b * dx)
+## log-log: %change in y = b * (%change in x). A FALL is a negative %.
+pct_loglog <- function(b, pct_x) b * pct_x
+## level-log: change in y (units) = (b / 100) * (%change in x)
+units_levellog <- function(b, pct_x) (b / 100) * pct_x
+
+## predict_y(): plug values into a fitted lm. If the model is log(y), returns y in levels via exp().
+##   values: a named list, e.g. list(educ = 16, exper = 5, tenure = 1)
+##   It handles log(x) terms in the formula by itself (you give the RAW value, e.g. income = 27071).
+predict_y <- function(reg, values) {
+  nd <- as.data.frame(values)
+  fit <- predict(reg, newdata = nd)
+  lhs <- deparse(formula(reg)[[2]])
+  if (grepl("^log\\(", lhs)) {
+    cat("  model is", lhs, "-> predicted log =", fit, "-> exp() =", exp(fit), "\n")
+    return(unname(exp(fit)))
+  }
+  unname(fit)
+}
+
+## ---- VARIANCE AND STANDARD ERRORS ----
+sst_from_x   <- function(x) sum((x - mean(x))^2)            # SST from the x values
+sst_from_sd  <- function(n, s) (n - 1) * s^2                # SST from a standard deviation
+sst_from_var <- function(n, v) (n - 1) * v                  # SST from a variance
+sd_b1      <- function(sigma, SST_X) sigma / sqrt(SST_X)    # Theorem 2.2 (simple regression)
+sigma2_hat <- function(SSR, n, K = 1) SSR / (n - K - 1)     # K = number of x's (simple: 1)
+sigma_hat  <- function(SSR, n, K = 1) sqrt(SSR / (n - K - 1))
+se_simple  <- function(SSR, n, SST_X) sqrt(SSR / (n - 2)) / sqrt(SST_X)
+se_multi   <- function(sigmahat, SSTj, R2j) sigmahat / sqrt(SSTj * (1 - R2j))
+se_scale   <- function(se, k) se / sqrt(k)                  # sample k times as large
+
+## se_by_hand(): every piece of se(bj) from a fitted multiple regression, on the rows lm() USED.
+##   reg: your lm;  xj: the variable name in quotes, exactly as in the formula,
+##        e.g. "bdrms", or "log(libvol)" for a logged x
+##   Prints df, sigma-hat, SST_j, R_j^2, the se, and summary()'s se so you can check they match.
+se_by_hand <- function(reg, xj) {
+  X <- model.matrix(reg)[, -1, drop = FALSE]                # x's on the rows lm() kept (drops NAs!)
+  if (!(xj %in% colnames(X))) stop("xj must be one of: ", paste(colnames(X), collapse = ", "))
+  others <- setdiff(colnames(X), xj)
+  n <- nrow(X); K <- ncol(X); df <- n - K - 1
+  SSR <- sum(reg$residuals^2)
+  sh <- sqrt(SSR / df)
+  xcol <- X[, xj]
+  SSTj <- sum((xcol - mean(xcol))^2)
+  if (length(others) > 0) {
+    aux <- lm(xcol ~ X[, others])                             # xj on the OTHER x's
+    R2j <- summary(aux)$r.squared
+  } else R2j <- 0
+  se <- sh / sqrt(SSTj * (1 - R2j))
+  cat("  rows used n =", n, "| K =", K, "| df = n-K-1 =", df, "\n")
+  cat("  SSR =", SSR, "| sigma-hat =", sh, "| sigma-hat^2 =", sh^2, "\n")
+  cat("  SST_j =", SSTj, "| R_j^2 =", R2j, " (", xj, "on", paste(others, collapse = " + "), ")\n")
+  cat("  se by hand =", se, "| summary() se =", summary(reg)$coefficients[xj, "Std. Error"], "\n")
+  invisible(se)
+}
+
+## ---- MULTIPLE REGRESSION ----
+## predict_lin(): b0 + b1*x1 + ... from numbers you are GIVEN (no data)
+predict_lin <- function(b, x) b[1] + sum(b[-1] * x)
+## change_lin(): change in y-hat = sum(b * dx). The intercept never matters for a change.
+change_lin <- function(b_slopes, dx) sum(b_slopes * dx)
+
+## ---- OMITTED-VARIABLE BIAS, formula (3.23):  b1_tilde = b1_hat + b2_hat * delta1_tilde ----
+b1_multiple <- function(b1_tilde, b2_hat, delta1) b1_tilde - b2_hat * delta1
+b1_simple   <- function(b1_hat, b2_hat, delta1)   b1_hat + b2_hat * delta1
+## ovb_data(): all the pieces from real data. y, x1 = included, x2 = omitted (names in quotes).
+ovb_data <- function(y, x1, x2, data) {
+  d <- na.omit(data[, c(y, x1, x2)])                        # same rows for all three regressions
+  long  <- lm(reformulate(c(x1, x2), response = y), data = d)
+  short <- lm(reformulate(x1, response = y), data = d)
+  aux   <- lm(reformulate(x1, response = x2), data = d)     # OMITTED on INCLUDED
+  b1h <- coef(long)[[x1]]; b2h <- coef(long)[[x2]]; del <- coef(aux)[[x1]]; b1t <- coef(short)[[x1]]
+  cat("  long  (", y, "~", x1, "+", x2, "): b1-hat =", b1h, " b2-hat =", b2h, "\n")
+  cat("  aux   (", x2, "~", x1, "): delta1-tilde =", del, "\n")
+  cat("  bias term b2-hat * delta1-tilde =", b2h * del, "\n")
+  cat("  short (", y, "~", x1, "): b1-tilde =", b1t, " = b1-hat + bias =", b1h + b2h * del, "\n")
+  invisible(c(b1_hat = b1h, b2_hat = b2h, delta1 = del, bias = b2h * del, b1_tilde = b1t))
+}
+## ovb_sign(): sign of beta2 (omitted var's effect on y) times sign of corr(omitted, included)
+ovb_sign <- function(effect_on_y, corr_with_x) {
+  s <- sign(effect_on_y) * sign(corr_with_x)
+  if (s > 0) "biased UPWARD" else if (s < 0) "biased DOWNWARD" else "NO bias"
+}
+
+## ---- BEFORE EXAM I ----
+sd_linear <- function(a, EX, EX2) abs(a) * sqrt(EX2 - EX^2)          # sd(aX + b); b drops out
+var_combo <- function(a, c, VarX, VarY, CovXY) a^2 * VarX + c^2 * VarY + 2 * a * c * CovXY
+joint_table <- function(xv, yv, p) {
+  stopifnot(abs(sum(p) - 1) < 1e-8)                          # probabilities must sum to 1
+  EX <- sum(p * xv); EY <- sum(p * yv)
+  VarX <- sum(p * xv^2) - EX^2; VarY <- sum(p * yv^2) - EY^2
+  Cov <- sum(p * xv * yv) - EX * EY
+  out <- c(EX = EX, EY = EY, VarX = VarX, VarY = VarY, Cov = Cov,
+           Cor = Cov / sqrt(VarX * VarY), slope_beta1 = Cov / VarX)
+  print(out); invisible(out)
+}
+ols_hand <- function(x, y) {
+  reg <- lm(y ~ x)
+  cat("  b0 =", coef(reg)[[1]], " b1 =", coef(reg)[[2]], "\n  residuals:", reg$residuals, "\n")
+  invisible(reg)
+}
+cat("PART 0 loaded. Use the INDEX at the top.\n")
+
+
+## =====================================================================================
+##  ## [A] LOGS AND UNITS
+## =====================================================================================
+
+## [A1] LOG-LEVEL:  log(y) = b0 + b1*x1 + ...    ->   %change in y = 100 * b * (change in x)
+##   Several x's change: add up the b*dx terms first, THEN multiply by 100.
+pct_loglevel(0.051, 2)                                  # Quiz 8: x rises 2           -> 10.20
+pct_loglevel(c(-0.045, 0.015), c(1, 1))                 # Quiz 10: both rise by 1     -> -3.00
+pct_loglevel(0.0029, 12)                                # PS9 #2: slope per MONTH, 1 year = 12 months -> 3.48
+## With real data (Quiz 10: educ +1 and tenure +2, unrounded coefficients):
+reg <- lm(log(wage) ~ educ + exper + tenure, data = wage1)
+b <- coef(reg)
+pct_loglevel(c(b[["educ"]], b[["tenure"]]), c(1, 2))    # -> 13.62
+
+## [A2] LOG-LOG (elasticity):  log(y) = b0 + b1*log(x)   ->  %change in y = b1 * %change in x
+pct_loglog(0.93, -7)                                    # Quiz 8: x FALLS 7%          -> -6.51
+reg <- lm(log(bwght) ~ log(faminc), data = bwght)
+pct_loglog(coef(reg)[[2]], 15)                          # Quiz 9: income +15%         -> 0.31
+
+## [A3] LEVEL-LOG:  y = b0 + b1*log(x)   ->  change in y (units) = (b1 / 100) * %change in x
+units_levellog(7.7, 13)                                 # Quiz 8                      -> 1.00
+reg <- lm(salary ~ log(sales), data = ceosal1)
+units_levellog(coef(reg)[[2]], 10)                      # PS9 #7 (thousands of $)     -> 26.29
+##   Reading the slope in words: "a 1% rise in x -> about b1/100 units of y" (Quiz 9: 20 -> 0.20)
+
+## [A4] PREDICT y IN LEVELS FROM A log(y) MODEL: exp(b0 + b1*x1 + ...). predict_y() does it.
+reg <- lm(log(wage) ~ educ + exper + tenure, data = wage1)
+predict_y(reg, list(educ = 16, exper = 5, tenure = 1))  # Quiz 10                     -> 6.05
+reg <- lm(log(psoda) ~ prpblck + log(income), data = discrim)
+predict_y(reg, list(prpblck = 0.18, income = 27071))    # PAST EXAM II 2024 Q14       -> 1.01
+predict_y(reg, list(prpblck = 0.76, income = 95918))    # PAST EXAM II 2023 Q14       -> 1.19
+reg <- lm(log(salary) ~ LSAT + GPA, data = lawsch85)
+predict_y(reg, list(LSAT = 165, GPA = 2.9))             # PAST EXAM II 2024 Q20       -> 36303.61
+reg <- lm(log(salary) ~ log(sales) + roe, data = ceosal1)
+predict_y(reg, list(sales = 5000, roe = 15))            # PS10 #17                    -> 1067.66
+
+## [A5] RESCALING (units of measurement)
+##   y times c          -> b0 and every slope times c         (Quiz/PS: salary $1000s -> $: slope x 1000)
+##   x times c          -> THAT slope DIVIDED by c; b0 same    (x divided by 10 -> slope TIMES 10)
+##   R^2, correlation   -> never change
+##   log(y), y times c  -> slopes unchanged; intercept + log(c)      (PS9 #3: + log(1000) = 6.91)
+##   log(x), x times c  -> slope unchanged; only the intercept changes (Quiz 8 #1)
+##   x in months, question in years -> slope * 12  (see A1)
+0.29 * 10                                               # Quiz 8: x DIVIDED by 10     -> 2.90
+reg <- lm(salary ~ sales, data = ceosal1)
+1000 * coef(reg)[["sales"]]                             # PS8 #16: salary in dollars  -> 15.47
+log(1000)                                               # PS9 #3: add this to the intercept -> 6.91
+
+
+## =====================================================================================
+##  ## [B] VARIANCE AND STANDARD ERRORS
+## =====================================================================================
+
+## [B1] sd(b1-hat) = sigma / sqrt(SST_X)       (TRUE sigma given -> "sd";  sigma-hat -> "se")
+##   SST_X from data:  sum((x - mean(x))^2)
+##   SST_X from S_X (standard deviation):  (n - 1) * S_X^2     <- SQUARE the sd
+##   SST_X from S_X^2 (variance):          (n - 1) * S_X^2
+sd_b1(8, sst_from_x(c(1, 2, 5, 7, 8)))                  # Quiz 8: sigma 8             -> 1.31
+sd_b1(5.6, sst_from_sd(8, 1.4))                         # Quiz 9: n 8, S_X 1.4        -> 1.51
+sst_from_var(26, 4)                                     # Day 16: n 26, S_X^2 = 4     -> 100
+
+## [B2] sigma-hat^2 = SSR / (n - K - 1)   ;  sigma-hat = sqrt of that  ("standard error of the regression")
+##   K = number of independent variables (NOT counting the intercept). Simple regression: K = 1.
+sigma2_hat(639, 60)                                     # Quiz 8: simple, n 60        -> 11.02
+sigma_hat(639, 60)                                      #                             -> 3.32
+## In summary(reg): "Residual standard error: ___ on ___ degrees of freedom" = sigma-hat and n-K-1
+reg <- lm(wage ~ educ, data = wage1)
+summary(reg)$sigma                                      # PS9 #18                     -> 3.38
+reg$df.residual                                         # df = n - K - 1              -> 524
+
+## [B3] se(bj-hat)
+##   SIMPLE:   se = sqrt(SSR / (n - 2)) / sqrt(SST_X)
+##   MULTIPLE: se = sigma-hat / sqrt( SST_j * (1 - R_j^2) )
+##     j    = the x whose coefficient you want the se of
+##     SST_j = total variation of THAT x:  sum((xj - mean(xj))^2)
+##     R_j^2 = R^2 from regressing xj on the OTHER x's.  y is NEVER in it.
+##       e.g. se(exper) in wage ~ educ + exper + tenure  ->  lm(exper ~ educ + tenure)   (PS12 #2)
+se_simple(820, 13, 18)                                  # Quiz 8                      -> 2.04
+se_multi(4, 200, 0.5)                                   # practice: sigma-hat 4       -> 0.40
+
+## [B4] Sample k times as large (same spread): sd and se DIVIDE by sqrt(k)
+se_scale(2.15, 2)                                       # Quiz 9: twice the data      -> 1.52
+
+## [B5] STANDARD ERROR BY HAND FROM REAL DATA  (PS12 #8-12, about five exam questions)
+##   se_by_hand() prints df, sigma-hat, SST_j, R_j^2 and the se, all on the rows lm() USED.
+##   MISSING-DATA TRAP (PS12 #15): datasets like catholic, discrim, lawsch85 have NAs.
+##   lm() drops those rows. Using nrow(data) or the full column gives a WRONG se.
+reg <- lm(price ~ sqrft + bdrms + lotsize, data = hprice1)
+se_by_hand(reg, "bdrms")                                # PS12: df 84, sigma-hat 59.83, SST 61.59, R2 0.28, se 9.01
+reg <- lm(wage ~ educ + exper, data = wage1)
+se_by_hand(reg, "educ")                                 # Day 21                      -> 0.05
+reg <- lm(math12 ~ hsgrad + lfaminc + cathhs, data = catholic)
+se_by_hand(reg, "cathhs")                               # NA trap: 0.44 (nrow() would give 0.38)
+## The quick way, to check:  summary(reg)$coefficients   (column "Std. Error")
+##   one entry: summary(reg)$coefficients["cathhs", "Std. Error"]   or  [row, 2]
+
+## [B6] WHAT MAKES Var(bj-hat) = sigma^2 / [SST_j (1 - R_j^2)] BIGGER?  (no computing)
+##   bigger sigma^2 (noisier errors)                              -> BIGGER
+##   smaller SST_j (x bunched together, or fewer observations)    -> BIGGER
+##   bigger R_j^2 (xj more correlated with other x's)             -> BIGGER; R_j^2 -> 1: grows without bound
+##   more observations / more spread-out x                        -> SMALLER
+##   the size of the true beta, the intercept                     -> NO effect
+##   Why prefer smaller variance: estimates land closer to beta from sample to sample (PS10 #5)
+
+
+## =====================================================================================
+##  ## [C] MULTIPLE REGRESSION: PREDICT, CHANGE, PROPERTIES
+## =====================================================================================
+
+## [C1] PREDICTION: plug EVERY x into the WHOLE equation
+predict_lin(c(2, 0.6, 1.4), c(3, 7))                    # Quiz 9: y = 2 + .6x1 + 1.4x2 at (3,7) -> 13.60
+reg <- lm(wage ~ educ + exper + tenure, data = wage1)
+predict_y(reg, list(educ = 16, exper = 5, tenure = 2))  # Quiz 9                      -> 7.16
+predict_y(reg, list(educ = 14, exper = 10, tenure = 5)) # PS10 #14                    -> 6.58
+reg$fitted.values[10]                                   # fitted value of observation 10
+reg$residuals[10]                                       # residual of observation 10 = actual - fitted
+
+## [C2] PREDICTED CHANGE: slopes times changes. NO intercept. A fall is negative.
+##   "holding X fixed" = that x's change is 0. Never give a full prediction for a change question.
+change_lin(c(3.7, -1.6), c(1, 2))                       # Quiz 9                      -> 0.50
+reg <- lm(wage ~ educ + exper + tenure, data = wage1)
+coef(reg)[["exper"]] * 10                               # Quiz 9: exper +10 only      -> 0.22
+coef(reg)[["tenure"]] * 3                               # PS10 #15: tenure +3 only    -> 0.51
+
+## [C3] OLS PROPERTIES (always true with an intercept; simple or multiple)
+##   residuals sum to 0 (average 0)  -> missing residual = -(sum of the others)
+##   sum(xj * residuals) = 0; Cov(xj, residuals) = 0 for every x
+##   Cov(y-hat, residuals) = 0.   Cov(y, residuals) is NOT 0  (trap, Quiz 10)
+##   the line passes through the means: ybar = b0 + b1*x1bar + b2*x2bar + ...
+-sum(c(1.7, -1.4, 1.8, -1.1))                           # Quiz 7: missing residual    -> -1.00
+predict_lin(c(2.1, -1.8, 2.2), c(10.6, 8.1))            # Quiz 10: ybar from x-means  -> 0.84
+reg <- lm(colGPA ~ ACT + hsGPA, data = gpa1)
+predict_lin(coef(reg), c(mean(gpa1$ACT), mean(gpa1$hsGPA)))  # PS11 #5               -> 3.06
+mean(gpa1$colGPA)                                       # same number: the means point is on the line
+sum(reg$residuals)                                      # prints ~1e-14: that IS 0
+
+
+## =====================================================================================
+##  ## [D] OMITTED-VARIABLE BIAS
+## =====================================================================================
+##   (3.23):  b1-tilde (SIMPLE, x2 left out) = b1-hat (MULTIPLE) + b2-hat * delta1-tilde
+##   delta1-tilde = slope from regressing the OMITTED x2 on the INCLUDED x1
+##   bias(b1-tilde) = beta2 * delta1
+
+## [D1] SOLVE (3.23) EITHER WAY
+b1_multiple(-1.22, 0.47, 0.48)                          # Quiz 10: find b1-hat        -> -1.45
+b1_simple(0.0094, 0.4535, 0.0389)                       # gpa1 Example 3.3: b1-tilde  -> 0.027
+
+## [D2] FROM REAL DATA: ovb_data(y, included, omitted, data)
+ovb_data("price", "bdrms", "sqrft", hprice1)            # Quiz 10: bias term          -> 46.83
+ovb_data("wage", "educ", "exper", wage1)                # PS10 #21: bias term         -> -0.10
+ovb_data("bwght", "cigs", "faminc", bwght)              # PS11 #12-14: -0.51, -0.46, -0.05
+
+## [D3] DIRECTION (Table 3.2): sign(omitted's effect on y) x sign(corr(omitted, included))
+##   same signs -> UP (overstates)     opposite signs -> DOWN (understates)
+##   NO bias if beta2 = 0 OR the two x's are uncorrelated (high R^2 or big n does NOT fix it)
+ovb_sign(+1, -1)   # Quiz 10: income raises scores (+), richer districts have smaller classes (-) -> DOWN
+ovb_sign(+1, +1)   # ability raises wages (+), more able get more educ (+)                      -> UP
+ovb_sign(+1, +1)   # PS11 #17: better land raises yield (+), more fertilizer on better land (+) -> UP
+ovb_sign(+1, -1)   # PS11 #18: ability raises scores (+), weaker students take more tutoring (-) -> DOWN
+ovb_sign(-1, +1)   # PS10 #20: omitted LOWERS y (-), positively correlated with x (+)          -> DOWN
+##   The omitted variable biasing the slope = MLR4 fails (x is ENDOGENOUS). Not MLR2.
+
+
+## =====================================================================================
+##  ## [E] ASSUMPTIONS AND GAUSS-MARKOV  (no computing)
+## =====================================================================================
+##   MLR1 linear in parameters
+##   MLR2 random sampling
+##   MLR3 no PERFECT collinearity. FAILS when:
+##        - one x is an exact linear function of others: sq ft and sq m; income in $ and in $1000s;
+##          totexpend = expendA + expendB; male + female + intercept; age and birth year (same year)
+##        - n < K + 1  (5 x's on 4 observations).  4 x's on 5 observations is OK.
+##        - (simple regression) x never varies: everyone has educ = 12 -> SLR3 fails (PS9 #10)
+##        Highly but NOT perfectly correlated x's (0.95): MLR3 HOLDS, but Var(bj) is large.
+##        In R, a perfectly collinear x shows coefficient NA (PS11 #8)
+v <- vote1; v$totexpend <- v$expendA + v$expendB
+coef(lm(voteA ~ expendA + expendB + totexpend, data = v))   # totexpend -> NA
+##   MLR4 E[U | x's] = 0. FAILS (x endogenous) when a variable that affects y AND is correlated
+##        with an x is left in U, or the functional form is wrong.
+##   MLR5 Var(U | x's) = sigma^2 (homoskedasticity). FAILS when the spread of y grows with x
+##        (food spending vs income, PS9 #17). OLS STILL UNBIASED; only the variance formula breaks.
+##   MLR1-MLR4 -> OLS UNBIASED: averaged over many random samples, bj-hat equals beta_j.
+##        (one sample still misses; estimates differ sample to sample; residuals are not 0)
+##   MLR1-MLR5 -> GAUSS-MARKOV: OLS is BLUE. "Best" = SMALLEST VARIANCE among linear unbiased estimators.
+##   Why not add every variable? It can raise the variance and can break MLR3 (PS11 #10).
+##   Population quantity (mu_Y, beta1) = a fixed number. Sample statistic (Ybar, b1-hat) = a random variable.
+##   bj in MLR = the change in y-hat from +1 in xj HOLDING THE OTHER x's FIXED (ceteris paribus).
+
+
+## =====================================================================================
+##  ## [F] FROM BEFORE EXAM I
+## =====================================================================================
+
+## [F1] RULES: E[aX + b] = aE[X] + b ; Var(aX + b) = a^2 Var(X) ; sd(aX + b) = |a| sd(X)
+##   Var(aX + cY) = a^2 Var(X) + c^2 Var(Y) + 2ac Cov(X, Y)    ("2X - 2Y": a = 2, c = -2)
+sd_linear(5, 5, 61)                                     # Quiz 7: sd(5X - 8)          -> 30.00
+var_combo(2, -2, 9, 5, -1.8)                            # Quiz 7: Var(2X - 2Y)        -> 70.40
+
+## [F2] JOINT PROBABILITY TABLE: type the rows in the same order. Weight by p (NOT cor()).
+joint_table(xv = c(1, 2, 4, 5), yv = c(2, 6, 3, 7), p = c(0.2, 0.3, 0.4, 0.1))   # Cor -> 0.16
+
+## [F3] SMALL SAMPLE BY HAND
+ols_hand(x = c(1, 5, 7, 9, 10), y = c(12, 12, 3, 7, 3))  # Quiz 7: residual 4      -> 2.18
+reg <- lm(wage ~ tenure, data = wage1)
+reg$residuals[9]                                        # Quiz 7: row 9               -> -2.10
+reg$residuals[12]                                       # PS8 #11: row 12             -> 3.14
+
+## [F4] SUMS OF SQUARES (Wooldridge: SSE = EXPLAINED, SSR = RESIDUAL)
+##   SST = (n - 1) * sample variance of y ;  SST = SSE + SSR ;  R^2 = SSE/SST = 1 - SSR/SST
+(60 - 1) * 17                                           # Quiz 7: SST                 -> 1003
+113 / 0.71 - 113                                        # Quiz 7: SSR from SSE, R^2   -> 46.15
+
+## [F5] MEAN WITHIN A GROUP:  mean(data$y[condition])     | = OR,  & = AND,  == equals
+mean(wage1$wage[wage1$female == 1])                     # average wage of women
+mean(catholic$read12[catholic$fatheduc >= 16 | catholic$motheduc >= 16])   # PAST EXAM II 2024 Q10 -> 55.83
+##   If a column has NAs: mean(x, na.rm = TRUE).   ?dataset shows what each variable means.
+## Sample mean and sample sd BY HAND (divide by n - 1), then check with R
+x <- c(4, 7, 9, 12)
+xbar <- sum(x) / length(x)                              # mean                        -> 8.00
+s <- sqrt(sum((x - xbar)^2) / (length(x) - 1))          # sample sd, n - 1            -> 3.37
+c(xbar, s, mean(x), sd(x))                              # same numbers both ways
+sd(wage1$wage[wage1$female == 1])                       # sd within a group
+##   Population quantity (mu_Y, beta1) = a FIXED number.  Sample statistic (Ybar, b1-hat) = a RANDOM variable.
+
+## [F6] WHICH OF FOUR LINES IS OLS: residual sum = 0 AND the SMALLEST sum of squared residuals.
+##   Ignore the sum of absolute residuals. (Quiz 7: line B)
+
+
+## =====================================================================================
+##  MY SCRATCH AREA (type exam work below; label each with the question number)
+## =====================================================================================
+# Q1:
