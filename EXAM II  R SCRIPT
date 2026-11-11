@@ -3,6 +3,31 @@
 ##  Jack Busbice  |  built from Problem Sets 8-12, Quizzes 7-10, Dr. Loh's past Exam II
 ## =====================================================================================
 ##
+##  >>> USING THIS WITH YOUR OWN BLANK SCRIPT (read this first) <<<
+##   Every script open in RStudio shares ONE R session. Anything this file creates
+##   (helpers like pct_loglevel(), se_by_hand(), sigma_hat()) is available to ALL of them.
+##   So you load this file ONCE, then type your answers in your blank script.
+##
+##   STEP 1. Make this the FIRST line of your blank script, and run it (Ctrl/Cmd + Enter):
+##              source(file.choose())
+##           A window opens -> pick THIS file. Wait for: "PART 0 loaded. Use the INDEX at the top."
+##           (Or: open this file in RStudio and click the "Source" button, top right.)
+##   STEP 2. Check it worked. In your blank script run:   exists("se_by_hand")
+##           TRUE = connected.  FALSE = do Step 1 again.
+##   STEP 3. Work in your blank script. Call the helpers by name, e.g.
+##              pct_loglevel(c(0.06, -0.03), c(2, 1))
+##              reg <- lm(wage ~ educ + exper, data = wage1)
+##              se_by_hand(reg, "educ")
+##           Keep this file open in another tab to read the INDEX and copy examples.
+##
+##   DO NOT:
+##   - put rm(list = ls()) in your blank script. It deletes every helper. (Fix: Step 1 again.)
+##   - re-run Step 1 in the middle of the exam. This file's examples reuse names like reg,
+##     b, x, y and will OVERWRITE yours. Load once at the start, before your own work.
+##   - name your own objects after a helper (e.g. sd_b1 <- 3). Use q1, q2, ... instead.
+##   - Restart R. If you do (Session -> Restart R), all helpers are gone: Step 1 again.
+##   If R says 'could not find function "..."', the helpers aren't loaded: Step 1 again.
+##
 ##  HOW TO USE THIS IN THE EXAM
 ##   1. Run PART 0 once (select it, Ctrl/Cmd + Enter). It loads the data and every helper.
 ##   2. Read the question. Find its TRIGGER WORDS in the INDEX below.
@@ -280,6 +305,14 @@ reg <- lm(wage ~ educ + exper, data = wage1)
 se_by_hand(reg, "educ")                                 # Day 21                      -> 0.05
 reg <- lm(math12 ~ hsgrad + lfaminc + cathhs, data = catholic)
 se_by_hand(reg, "cathhs")                               # NA trap: 0.44 (nrow() would give 0.38)
+## Dr. Loh's office-hours version (11/10), with a LOGGED x:
+reg <- lm(wage ~ educ + log(exper), data = wage1)
+n <- nrow(wage1); K <- 2; df <- n - K - 1               # 523   (wage1 has no NAs, so nrow() is safe)
+SSR <- sum(reg$residuals^2)
+SER <- sqrt(SSR / df)                                   # sigma-hat                   -> 3.19
+summary(reg)$sigma                                      # check: same number
+se_by_hand(reg, "log(exper)")                           # x is log(exper): SST_j uses log(exper) -> se 0.13
+se_by_hand(reg, "educ")                                 #                                         -> se 0.05
 ## The quick way, to check:  summary(reg)$coefficients   (column "Std. Error")
 ##   one entry: summary(reg)$coefficients["cathhs", "Std. Error"]   or  [row, 2]
 
