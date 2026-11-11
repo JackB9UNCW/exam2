@@ -91,6 +91,15 @@
 ##   SST from n and sample variance; SSR from SSE and R^2   -> [F4]
 ##   "mean of y among those with ..." (a group)             -> [F5]  mean(y[condition])
 ##   "which of four lines is OLS"                           -> [F6]
+##
+##  SPELLED-OUT STEP-BY-STEP VERSIONS
+##   se by hand line by line (n, K, df, sigma-hat, SST_j, R_j^2) -> [G1]
+##   same with a LOGGED x, e.g. log(exper)                  -> [G2]
+##   fitted value / residual of person i in a log(y) model  -> [G3]
+##   mean of residuals, cov(residuals, x) in R              -> [G4]
+##   SST, SSE, SSR, R^2 from real data                      -> [G5]
+##   E[X], Var(X), sd(X) from ONE probability table         -> [G6]
+##   rescale real data with a new column                    -> [G7]
 ## =====================================================================================
 
 
@@ -447,6 +456,67 @@ sd(wage1$wage[wage1$female == 1])                       # sd within a group
 
 ## [F6] WHICH OF FOUR LINES IS OLS: residual sum = 0 AND the SMALLEST sum of squared residuals.
 ##   Ignore the sum of absolute residuals. (Quiz 7: line B)
+
+
+## =====================================================================================
+##  ## [G] SPELLED-OUT VERSIONS (Dr. Loh's step-by-step style) AND EXTRA VARIANTS
+##  Use these when a question walks you through the pieces one at a time.
+## =====================================================================================
+
+## [G1] se(bj) BY HAND, EVERY LINE VISIBLE, NA-SAFE  (his 2023/2024 style)
+reg <- lm(math12 ~ hsgrad + lfaminc + cathhs, data = catholic)
+d <- model.frame(reg)                     # the rows lm() used (catholic has NAs!)
+n <- nrow(d)                              # 5970, NOT nrow(catholic) = 7430
+K <- 3                                    # count the x's
+df <- n - K - 1                           # 5966  (check: reg$df.residual)
+SSR <- sum(reg$residuals^2)
+sigmahat <- sqrt(SSR / df)                # 8.74  (check: summary(reg)$sigma)
+SSTj <- (n - 1) * var(d$cathhs)           # 399.03 (same as sum((x - mean(x))^2))
+R2j <- summary(lm(cathhs ~ hsgrad + lfaminc, data = d))$r.squared   # xj on the OTHER x's: 0.02
+sigmahat / sqrt(SSTj * (1 - R2j))         # 0.44
+summary(reg)$coefficients[4, 2]           # check: row 4 = cathhs (intercept is row 1), column 2 = Std. Error
+
+## [G2] SAME, WITH A LOGGED x  (office hours 11/10)
+reg <- lm(wage ~ educ + log(exper), data = wage1)
+lx <- log(wage1$exper)                    # SST_j uses the LOGGED values
+SSTj <- sum((lx - mean(lx))^2)            # 596.00   (raw exper would be WRONG)
+R2j <- summary(lm(log(exper) ~ educ, data = wage1))$r.squared       # 0.04
+summary(reg)$sigma / sqrt(SSTj * (1 - R2j))   # 0.13
+summary(reg)$coefficients[3, 2]           # check
+
+## [G3] FITTED VALUE AND RESIDUAL OF ONE PERSON IN A log(y) MODEL  (his 2025 class)
+reg <- lm(log(wage) ~ educ + exper + tenure, data = wage1)
+reg$fitted.values[10]                     # predicted LOG(wage) of person 10   -> 2.40
+reg$residuals[10]                         # residual in LOG units              -> 0.50
+log(wage1$wage[10]) - reg$fitted.values[10]   # same: log(actual) - fitted
+exp(reg$fitted.values[10])                # predicted wage in DOLLARS          -> 11.06
+##   coefficient by position (his style): reg$coefficients[2] is the first x, [1] the intercept
+
+## [G4] OLS PROPERTIES CHECKED IN R (they print ~1e-16: that IS 0)
+mean(reg$residuals)                       # 0
+cov(reg$residuals, wage1$exper)           # 0 for every x in the model
+
+## [G5] SST, SSE, SSR, R^2 FROM REAL DATA
+reg <- lm(wage ~ educ, data = wage1)
+y <- wage1$wage
+SST <- sum((y - mean(y))^2)               # 7160.41
+SSR <- sum(reg$residuals^2)               # 5980.68  (unexplained)
+SSE <- SST - SSR                          # 1179.73  (explained)
+SSE / SST                                 # R^2 = 0.16
+summary(reg)$r.squared                    # check
+
+## [G6] ONE RANDOM VARIABLE FROM A PROBABILITY TABLE  (study guide section 0)
+xv <- c(0, 1, 2, 5); p <- c(0.1, 0.4, 0.3, 0.2)   # values and their probabilities
+EX <- sum(p * xv)                         # E[X]   -> 2.00
+VarX <- sum(p * xv^2) - EX^2              # Var(X) -> 2.60
+sqrt(VarX)                                # sd(X)  -> 1.61
+##   Var(X + b) = Var(X); Var(aX) = a^2 Var(X).  E[aX + b] = a E[X] + b
+
+## [G7] RESCALE REAL DATA BY MAKING A NEW COLUMN, THEN RE-RUN
+ceosal1$salarydol <- 1000 * ceosal1$salary         # y in dollars
+coef(lm(salarydol ~ sales, data = ceosal1))        # slope x 1000 -> 15.47
+ceosal1$roedec <- ceosal1$roe / 100                # x as a decimal
+coef(lm(salary ~ roedec, data = ceosal1))          # slope x 100
 
 
 ## =====================================================================================
